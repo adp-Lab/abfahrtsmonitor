@@ -204,6 +204,83 @@
             .departures-table td,
             .departures-table th { padding: 0.5rem 0.4rem; font-size: 0.88rem; }
         }
+
+        /* ── Overlay-URL Generator ───────────────────── */
+        .url-generator {
+            max-width: 900px;
+            margin: 2.5rem auto 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem 1.5rem;
+        }
+        .url-generator h3 {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--muted);
+            margin-bottom: 1rem;
+        }
+        .url-gen-stop {
+            font-size: 0.88rem;
+            color: var(--muted);
+            margin-bottom: 1rem;
+        }
+        .url-gen-stop strong { color: var(--text); }
+        .bg-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+        .bg-btn {
+            display: flex; align-items: center; gap: 0.4rem;
+            padding: 0.4rem 0.9rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--muted);
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s, background 0.15s;
+        }
+        .bg-btn:hover  { border-color: var(--blue); color: var(--text); }
+        .bg-btn.active { border-color: var(--blue); color: var(--blue);
+                         background: rgba(96,165,250,0.08); }
+        .bg-btn .swatch {
+            width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .url-output {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--muted);
+            font-family: monospace;
+            font-size: 0.76rem;
+            padding: 0.6rem 0.75rem;
+            resize: none;
+            height: 3.6rem;
+            line-height: 1.6;
+            margin-bottom: 0.75rem;
+        }
+        .url-output.has-url { color: var(--text); border-color: #3a3a5a; }
+        .url-gen-row { display: flex; align-items: center; gap: 0.75rem; }
+        .copy-btn {
+            padding: 0.5rem 1.2rem;
+            background: var(--blue);
+            color: #0a0a0f;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: opacity 0.15s;
+        }
+        .copy-btn:hover    { opacity: 0.85; }
+        .copy-btn:disabled { opacity: 0.35; cursor: default; }
+        .copy-confirm {
+            font-size: 0.8rem; color: var(--green);
+            opacity: 0; transition: opacity 0.3s;
+        }
+        .copy-confirm.visible { opacity: 1; }
     </style>
 </head>
 <body>
@@ -247,6 +324,47 @@
 <!-- ── Status-Meldung ────────────────────────────────────── -->
 <div id="stateMessage" class="state-message">
     Haltestelle eingeben um Abfahrten anzuzeigen.
+</div>
+
+<!-- ── Overlay-URL Generator ─────────────────────────────── -->
+<!-- Nur im normalen Anzeigemodus sichtbar (nicht wenn ?bg= gesetzt ist) -->
+<div id="urlGenerator" class="url-generator">
+    <h3>Overlay-URL Generator</h3>
+
+    <p class="url-gen-stop">
+        Haltestelle: <strong id="genStopName">Noch keine Haltestelle gewählt</strong>
+    </p>
+
+    <!-- Hintergrund-Modus wählen -->
+    <div class="bg-buttons">
+        <button class="bg-btn active" onclick="selectBgMode('transparent')">
+            <span class="swatch" style="background:repeating-conic-gradient(#555 0% 25%,#333 0% 50%) 0/8px 8px"></span>
+            Transparent
+        </button>
+        <button class="bg-btn" onclick="selectBgMode('green')">
+            <span class="swatch" style="background:#00b140"></span>
+            Grün (Chroma)
+        </button>
+        <button class="bg-btn" onclick="selectBgMode('blue')">
+            <span class="swatch" style="background:#0047ab"></span>
+            Blau (Chroma)
+        </button>
+        <button class="bg-btn" onclick="selectBgMode('black')">
+            <span class="swatch" style="background:#000;border-color:#555"></span>
+            Schwarz (Luma)
+        </button>
+    </div>
+
+    <!-- Generierte URL -->
+    <textarea id="overlayUrl" class="url-output" readonly
+        placeholder="Haltestelle wählen → fertige URL erscheint hier"></textarea>
+
+    <div class="url-gen-row">
+        <button id="copyBtn" class="copy-btn" onclick="copyOverlayURL()" disabled>
+            URL kopieren
+        </button>
+        <span id="copyConfirm" class="copy-confirm">Kopiert ✓</span>
+    </div>
 </div>
 
 
@@ -330,6 +448,10 @@
 
         loadDepartures();
         startAutoRefresh();
+
+        // Generator-Panel aktualisieren
+        document.getElementById('genStopName').textContent = name;
+        buildOverlayURL();
     }
 
     // ─── Abfahrten von der API laden ──────────────────────────────────────────
@@ -454,6 +576,82 @@
         }, 500);
     }
 
+    // ─── Overlay-URL Generator ────────────────────────────────────────────────
+    //
+    // Dieses Panel hilft dabei, die fertige URL für vMix oder ATEM zu erstellen.
+    // Der Nutzer wählt eine Haltestelle (oben) und einen Hintergrund-Modus (unten),
+    // und bekommt die fertige URL zum Einfügen in den Videomischer.
+    //
+    // AUFGABE: Die drei Funktionen unten sind noch nicht implementiert.
+    // Implementiere sie so, dass das Panel vollständig funktioniert.
+
+    let activeBgMode = 'transparent'; // aktuell gewählter Modus
+
+    const genStopName  = document.getElementById('genStopName');
+    const overlayUrl   = document.getElementById('overlayUrl');
+    const copyBtn      = document.getElementById('copyBtn');
+    const copyConfirm  = document.getElementById('copyConfirm');
+
+    // ── selectBgMode(mode) ────────────────────────────────────────────────────
+    // Wird aufgerufen, wenn der Nutzer einen der vier Modus-Buttons klickt.
+    //
+    // Was diese Funktion tun soll:
+    //   1. activeBgMode auf den neuen Wert setzen
+    //   2. Den geklickten Button mit der CSS-Klasse 'active' markieren
+    //      (alle anderen Buttons müssen 'active' verlieren)
+    //   3. buildOverlayURL() aufrufen, damit die URL sofort aktualisiert wird
+    //
+    // Tipp: document.querySelectorAll('.bg-btn') gibt dir alle vier Buttons.
+    //       Du kannst über sie iterieren und jeweils prüfen ob
+    //       btn.getAttribute('onclick') === `selectBgMode('${mode}')`.
+    //
+    // TODO: Implementiere diese Funktion.
+    function selectBgMode(mode) {
+        activeBgMode = mode;
+        // ... dein Code hier ...
+    }
+
+    // ── buildOverlayURL() ────────────────────────────────────────────────────
+    // Baut die fertige Overlay-URL aus den aktuellen Werten zusammen
+    // und zeigt sie im Textfeld an.
+    //
+    // Was diese Funktion tun soll:
+    //   1. Prüfen ob currentStopId vorhanden ist — falls nicht, nichts tun
+    //   2. Die Basis-URL ermitteln: window.location.origin + window.location.pathname
+    //   3. URL-Parameter zusammenbauen:
+    //        stop  = currentStopId
+    //        name  = currentStopName
+    //        bg    = activeBgMode
+    //   4. Fertige URL in overlayUrl.value schreiben
+    //   5. overlayUrl die CSS-Klasse 'has-url' geben (macht den Text heller)
+    //   6. copyBtn.disabled = false setzen (Kopieren freischalten)
+    //
+    // Tipp: new URLSearchParams({ stop: ..., name: ..., bg: ... }).toString()
+    //       gibt dir den fertigen Query-String ohne das '?'.
+    //
+    // TODO: Implementiere diese Funktion.
+    function buildOverlayURL() {
+        if (!currentStopId) return;
+        // ... dein Code hier ...
+    }
+
+    // ── copyOverlayURL() ────────────────────────────────────────────────────
+    // Kopiert die angezeigte URL in die Zwischenablage und zeigt kurz eine
+    // Bestätigung an.
+    //
+    // Was diese Funktion tun soll:
+    //   1. overlayUrl.value mit navigator.clipboard.writeText() kopieren
+    //   2. Nach erfolgreichem Kopieren: copyConfirm die Klasse 'visible' geben
+    //   3. Nach 2 Sekunden: 'visible' wieder entfernen
+    //
+    // Tipp: navigator.clipboard.writeText() gibt ein Promise zurück — nutze .then()
+    //       oder async/await.
+    //
+    // TODO: Implementiere diese Funktion.
+    function copyOverlayURL() {
+        // ... dein Code hier ...
+    }
+
     // ─── Beim Start: URL-Parameter auslesen ──────────────────────────────────
     // Lesezeichen:  ?stop=8011160&name=Berlin+Hbf
     // Hintergrund:  ?bg=transparent|green|blue|black  (Standard: dark)
@@ -470,10 +668,9 @@
         const bgKey = params.get('bg');
         if (bgKey && bgMap[bgKey] !== undefined) {
             document.body.style.background = bgMap[bgKey];
-            // Im Overlay-Modus: Suche ausblenden, nur Tabelle zeigen
-            if (bgKey === 'transparent' || bgKey === 'green' || bgKey === 'blue' || bgKey === 'black') {
-                document.querySelector('.search-wrapper').style.display = 'none';
-            }
+            // Im Overlay-Modus: Suche + Generator ausblenden, nur Tabelle zeigen
+            document.querySelector('.search-wrapper').style.display   = 'none';
+            document.getElementById('urlGenerator').style.display     = 'none';
         }
 
         // ── Haltestelle aus URL laden ─────────────────────────────────────
