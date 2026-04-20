@@ -19,6 +19,14 @@
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
+        /* ── Hintergrund-Modi (via ?bg=...) ─────────────────────────────────
+           transparent  → vMix / OBS Browser-Source (Overlay)
+           green        → Chroma-Key auf ATEM oder anderen Mischern
+           blue         → Chroma-Key Alternative
+           black        → Luma-Key
+           dark (std.)  → normaler Anzeigemodus am Bildschirm / Handy
+        ─────────────────────────────────────────────────────────────────── */
+
         body {
             background: var(--bg);
             color: var(--text);
@@ -447,9 +455,28 @@
     }
 
     // ─── Beim Start: URL-Parameter auslesen ──────────────────────────────────
-    // Ermöglicht Lesezeichen wie: index.html?stop=8011160&name=Berlin+Hbf
+    // Lesezeichen:  ?stop=8011160&name=Berlin+Hbf
+    // Hintergrund:  ?bg=transparent|green|blue|black  (Standard: dark)
     (function init() {
         const params = new URLSearchParams(window.location.search);
+
+        // ── Hintergrundfarbe setzen ───────────────────────────────────────
+        const bgMap = {
+            transparent: 'transparent',          // vMix / OBS Overlay
+            green:       '#00b140',              // Chroma-Key (Broadcast-Grün)
+            blue:        '#0047ab',              // Chroma-Key Alternative
+            black:       '#000000',              // Luma-Key
+        };
+        const bgKey = params.get('bg');
+        if (bgKey && bgMap[bgKey] !== undefined) {
+            document.body.style.background = bgMap[bgKey];
+            // Im Overlay-Modus: Suche ausblenden, nur Tabelle zeigen
+            if (bgKey === 'transparent' || bgKey === 'green' || bgKey === 'blue' || bgKey === 'black') {
+                document.querySelector('.search-wrapper').style.display = 'none';
+            }
+        }
+
+        // ── Haltestelle aus URL laden ─────────────────────────────────────
         const stopId = params.get('stop');
         const name   = params.get('name');
         if (stopId && name) {
