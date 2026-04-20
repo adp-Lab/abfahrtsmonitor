@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abfahrtsmonitor</title>
+    <style>
+        :root {
+            --bg:      #0a0a0f;
+            --surface: #13131a;
+            --border:  #2a2a3a;
+            --text:    #e8e8f0;
+            --muted:   #6a6a8a;
+            --green:   #4ade80;
+            --yellow:  #fbbf24;
+            --red:     #f87171;
+            --blue:    #60a5fa;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            padding: 1.25rem 1rem;
+        }
+
+        /* ── Suche ───────────────────────────────────── */
+        .search-wrapper {
+            max-width: 640px;
+            margin: 0 auto 1.5rem;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .search-input:focus { border-color: var(--blue); }
+        .search-input::placeholder { color: var(--muted); }
+
+        .suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0; right: 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            z-index: 100;
+            display: none;
+        }
+        .suggestion-item {
+            padding: 0.65rem 1rem;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+        .suggestion-item:last-child { border-bottom: none; }
+        .suggestion-item:hover { background: var(--border); }
+
+        /* ── Board-Kopf ──────────────────────────────── */
+        .board-header {
+            max-width: 900px;
+            margin: 0 auto 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 1rem;
+        }
+        .stop-name {
+            font-size: 1.35rem;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .refresh-info {
+            font-size: 0.78rem;
+            color: var(--muted);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        /* ── Tabelle ─────────────────────────────────── */
+        .departures-table {
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .departures-table th {
+            text-align: left;
+            padding: 0.45rem 0.75rem;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--muted);
+            border-bottom: 1px solid var(--border);
+        }
+        .departures-table td {
+            padding: 0.6rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.95rem;
+            vertical-align: middle;
+        }
+        .departures-table tr:last-child td { border-bottom: none; }
+
+        /* ── Linien-Badge ────────────────────────────── */
+        .line-badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 5px;
+            font-weight: 700;
+            font-size: 0.82rem;
+            min-width: 2.8rem;
+            text-align: center;
+            background: var(--border);
+            color: var(--text);
+        }
+        /* Produktfarben */
+        .product-nationalExpress .line-badge,
+        .product-national        .line-badge { background: #c0392b; color: #fff; }
+        .product-regionalExp     .line-badge,
+        .product-regional        .line-badge { background: #e65100; color: #fff; }
+        .product-suburban        .line-badge { background: #007a3d; color: #fff; }
+        .product-subway          .line-badge { background: #1565c0; color: #fff; }
+        .product-tram            .line-badge { background: #b71c1c; color: #fff; }
+        .product-bus             .line-badge { background: #6a1b9a; color: #fff; }
+        .product-ferry           .line-badge { background: #006064; color: #fff; }
+
+        /* ── Zeiten und Verspätung ───────────────────── */
+        .time-col { font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .on-time     { color: var(--green); }
+        .delay-minor { color: var(--yellow); }
+        .delay-major { color: var(--red); }
+        .planned-time {
+            color: var(--muted);
+            text-decoration: line-through;
+            font-size: 0.82rem;
+            display: block;
+        }
+        .delay-tag {
+            font-size: 0.82rem;
+            margin-left: 0.2rem;
+        }
+
+        /* ── Gleis-Badge ─────────────────────────────── */
+        .platform-badge {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.15rem 0.45rem;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        /* ── Fortschrittsbalken ──────────────────────── */
+        .refresh-bar {
+            max-width: 900px;
+            margin: 0.75rem auto 0;
+            height: 2px;
+            background: var(--border);
+            border-radius: 1px;
+            overflow: hidden;
+        }
+        .refresh-bar-inner {
+            height: 100%;
+            background: var(--blue);
+            border-radius: 1px;
+            transition: width 1s linear;
+        }
+
+        /* ── Status-Meldung ──────────────────────────── */
+        .state-message {
+            max-width: 900px;
+            margin: 3rem auto;
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* ── Responsive ──────────────────────────────── */
+        @media (max-width: 520px) {
+            .col-platform { display: none; }
+            .departures-table td,
+            .departures-table th { padding: 0.5rem 0.4rem; font-size: 0.88rem; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── Suchefeld ──────────────────────────────────────────── -->
+<div class="search-wrapper">
+    <input
+        type="text"
+        id="searchInput"
+        class="search-input"
+        placeholder="Haltestelle suchen … (z. B. Berlin Hbf, München Hbf)"
+        autocomplete="off"
+    >
+    <div id="suggestions" class="suggestions"></div>
+</div>
+
+<!-- ── Board-Header ───────────────────────────────────────── -->
+<div id="boardHeader" class="board-header" style="display:none">
+    <span id="stopNameDisplay" class="stop-name"></span>
+    <span id="refreshInfo"     class="refresh-info">Aktualisiert gerade …</span>
+</div>
+
+<!-- ── Abfahrtstabelle ────────────────────────────────────── -->
+<table id="departuresTable" class="departures-table" style="display:none">
+    <thead>
+        <tr>
+            <th>Linie</th>
+            <th>Richtung</th>
+            <th>Abfahrt</th>
+            <th class="col-platform">Gleis</th>
+        </tr>
+    </thead>
+    <tbody id="departuresBody"></tbody>
+</table>
+
+<!-- ── Countdown-Balken ───────────────────────────────────── -->
+<div id="refreshBar" class="refresh-bar" style="display:none">
+    <div id="refreshBarInner" class="refresh-bar-inner" style="width:100%"></div>
+</div>
+
+<!-- ── Status-Meldung ────────────────────────────────────── -->
+<div id="stateMessage" class="state-message">
+    Haltestelle eingeben um Abfahrten anzuzeigen.
+</div>
+
+
+<script>
+    // ─── Konfiguration ────────────────────────────────────────────────────────
+    const API         = 'https://v6.db.transport.rest'; // deutschlandweite DB-API
+    const REFRESH_MS  = 30_000;   // alle 30 Sekunden neu laden
+    const MAX_RESULTS = 20;       // max. Zeilen in der Tabelle
+    const MAX_MINUTES = 90;       // Abfahrten der nächsten 90 Minuten
+
+    // ─── Zustand ─────────────────────────────────────────────────────────────
+    let currentStopId   = null;
+    let currentStopName = null;
+    let refreshTimer    = null;
+    let countdownTimer  = null;
+    let searchTimer     = null;
+    let refreshAt       = null;
+
+    // ─── DOM ─────────────────────────────────────────────────────────────────
+    const searchInput     = document.getElementById('searchInput');
+    const suggestionsBox  = document.getElementById('suggestions');
+    const boardHeader     = document.getElementById('boardHeader');
+    const stopNameDisplay = document.getElementById('stopNameDisplay');
+    const refreshInfo     = document.getElementById('refreshInfo');
+    const departuresTable = document.getElementById('departuresTable');
+    const departuresBody  = document.getElementById('departuresBody');
+    const stateMessage    = document.getElementById('stateMessage');
+    const refreshBar      = document.getElementById('refreshBar');
+    const refreshBarInner = document.getElementById('refreshBarInner');
+
+    // ─── Suche: Debounce → API ────────────────────────────────────────────────
+    searchInput.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        const query = searchInput.value.trim();
+        if (query.length < 2) { hideSuggestions(); return; }
+        // Warte 300 ms bevor die API angefragt wird (spart Anfragen beim Tippen)
+        searchTimer = setTimeout(() => fetchSuggestions(query), 300);
+    });
+
+    async function fetchSuggestions(query) {
+        try {
+            const url  = `${API}/locations?query=${encodeURIComponent(query)}&results=6&stops=true&addresses=false&poi=false`;
+            const res  = await fetch(url);
+            const data = await res.json();
+            showSuggestions(data);
+        } catch {
+            hideSuggestions();
+        }
+    }
+
+    function showSuggestions(stops) {
+        suggestionsBox.innerHTML = '';
+        if (!stops.length) { hideSuggestions(); return; }
+        stops.forEach(stop => {
+            const div = document.createElement('div');
+            div.className   = 'suggestion-item';
+            div.textContent = stop.name;
+            div.addEventListener('click', () => selectStop(stop.id, stop.name));
+            suggestionsBox.appendChild(div);
+        });
+        suggestionsBox.style.display = 'block';
+    }
+
+    function hideSuggestions() { suggestionsBox.style.display = 'none'; }
+
+    // Klick außerhalb schließt Vorschläge
+    document.addEventListener('click', e => {
+        if (!e.target.closest('.search-wrapper')) hideSuggestions();
+    });
+
+    // ─── Haltestelle auswählen ────────────────────────────────────────────────
+    function selectStop(id, name) {
+        currentStopId   = id;
+        currentStopName = name;
+        searchInput.value = name;
+        hideSuggestions();
+
+        // URL-Parameter setzen → Lesezeichen/Sharing möglich
+        const params = new URLSearchParams({ stop: id, name });
+        history.replaceState(null, '', '?' + params.toString());
+
+        loadDepartures();
+        startAutoRefresh();
+    }
+
+    // ─── Abfahrten von der API laden ──────────────────────────────────────────
+    async function loadDepartures() {
+        setMessage('Lade Abfahrten …');
+        try {
+            const url = `${API}/stops/${currentStopId}/departures`
+                      + `?results=${MAX_RESULTS}&duration=${MAX_MINUTES}`;
+            const res  = await fetch(url);
+            const data = await res.json();
+
+            // API gibt entweder data.departures (neu) oder direkt ein Array (alt) zurück
+            const departures = data.departures ?? data;
+            renderDepartures(departures);
+
+            refreshAt = Date.now() + REFRESH_MS;
+            startCountdown();
+        } catch {
+            setMessage('⚠ Fehler beim Laden. Nächster Versuch in 30 Sekunden.');
+        }
+    }
+
+    // ─── Tabelle befüllen ─────────────────────────────────────────────────────
+    function renderDepartures(departures) {
+        if (!departures.length) {
+            setMessage('Keine Abfahrten in den nächsten 90 Minuten.');
+            return;
+        }
+
+        departuresBody.innerHTML = '';
+
+        departures.forEach(dep => {
+            const planned  = dep.plannedWhen ? new Date(dep.plannedWhen) : null;
+            const actual   = dep.when        ? new Date(dep.when)        : planned;
+            const delaySec = dep.delay ?? 0;
+            const delayMin = Math.round(delaySec / 60);
+
+            const tr      = document.createElement('tr');
+            const product = dep.line?.product ?? 'bus';
+            tr.className  = `product-${product}`;
+
+            // Verspätungs-CSS-Klasse und Anzeigetext
+            let delayClass = 'on-time';
+            let delayText  = '';
+            if (delaySec > 60) {
+                delayClass = delayMin <= 5 ? 'delay-minor' : 'delay-major';
+                delayText  = `+${delayMin}`;
+            } else if (delaySec < -60) {
+                delayClass = 'delay-minor';
+                delayText  = `${delayMin}`;
+            }
+
+            const timeStr    = actual  ? fmt(actual)  : '–';
+            const plannedStr = planned ? fmt(planned) : '';
+            const platform   = dep.platform ?? dep.plannedPlatform ?? '';
+            const direction  = (dep.direction ?? '–').substring(0, 42);
+            const lineName   = dep.line?.name ?? '?';
+
+            tr.innerHTML = `
+                <td><span class="line-badge">${esc(lineName)}</span></td>
+                <td>${esc(direction)}</td>
+                <td class="time-col">
+                    <span class="${delayClass}">
+                        ${timeStr}${delayText ? ` <span class="delay-tag">${esc(delayText)}</span>` : ''}
+                    </span>
+                    ${delaySec > 60 ? `<span class="planned-time">${plannedStr}</span>` : ''}
+                </td>
+                <td class="col-platform">
+                    ${platform ? `<span class="platform-badge">${esc(String(platform))}</span>` : ''}
+                </td>
+            `;
+            departuresBody.appendChild(tr);
+        });
+
+        // UI einblenden
+        stateMessage.style.display    = 'none';
+        departuresTable.style.display = 'table';
+        boardHeader.style.display     = 'flex';
+        refreshBar.style.display      = 'block';
+        stopNameDisplay.textContent   = currentStopName;
+        refreshInfo.textContent       = `Aktualisiert: ${fmt(new Date())}`;
+    }
+
+    // ─── Hilfsfunktionen ──────────────────────────────────────────────────────
+
+    // Zeit als "HH:MM" formatieren
+    function fmt(date) {
+        return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // HTML-Sonderzeichen escapen (verhindert XSS)
+    function esc(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    // Nur Status-Meldung anzeigen, Tabelle ausblenden
+    function setMessage(msg) {
+        departuresTable.style.display = 'none';
+        boardHeader.style.display     = 'none';
+        refreshBar.style.display      = 'none';
+        stateMessage.style.display    = 'block';
+        stateMessage.textContent      = msg;
+    }
+
+    // ─── Auto-Refresh ─────────────────────────────────────────────────────────
+    function startAutoRefresh() {
+        clearInterval(refreshTimer);
+        refreshTimer = setInterval(loadDepartures, REFRESH_MS);
+    }
+
+    // Countdown-Balken (läuft von 100 % → 0 %)
+    function startCountdown() {
+        clearInterval(countdownTimer);
+        refreshBarInner.style.width = '100%';
+        countdownTimer = setInterval(() => {
+            const remaining = Math.max(0, refreshAt - Date.now());
+            refreshBarInner.style.width = (remaining / REFRESH_MS * 100) + '%';
+        }, 500);
+    }
+
+    // ─── Beim Start: URL-Parameter auslesen ──────────────────────────────────
+    // Ermöglicht Lesezeichen wie: index.html?stop=8011160&name=Berlin+Hbf
+    (function init() {
+        const params = new URLSearchParams(window.location.search);
+        const stopId = params.get('stop');
+        const name   = params.get('name');
+        if (stopId && name) {
+            searchInput.value = name;
+            selectStop(stopId, name);
+        }
+    })();
+</script>
+
+</body>
+</html>
